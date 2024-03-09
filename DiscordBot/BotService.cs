@@ -1,4 +1,5 @@
-﻿using DiscordBot.Models;
+﻿using DiscordBot.ExtensionMethods;
+using DiscordBot.Models;
 using DiscordBot.Options;
 using DSharpPlus;
 using DSharpPlus.Entities;
@@ -6,6 +7,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using MongoDB.Driver;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -40,9 +42,8 @@ namespace DiscordBot
 
         public async Task StartAsync(CancellationToken token)
         {
-            await _mongo.GetDb().DropCollectionAsync("servers", token);
-            await _mongo.GetDb().CreateCollectionAsync("servers", cancellationToken: token);
-            var serversCollection = _mongo.GetDb().GetCollection<DbServer>("servers");
+            var serversCollection = _mongo.GetServersCollection();
+            await serversCollection.DeleteManyAsync(Builders<DbServer>.Filter.Empty, token);
 
             if (_start)
                 await _discordClient.ConnectAsync();
@@ -70,7 +71,7 @@ namespace DiscordBot
                         {
                             ChannelId = channel.Id,
                             Name = channel.Name,
-                            IsVoice = channel.Type == ChannelType.Text
+                            IsVoice = channel.Type == ChannelType.Voice
                         });
                     }
 
@@ -83,11 +84,46 @@ namespace DiscordBot
 
             _discordClient.MessageCreated += async (s, e) =>
             {
-                if (e.Message.Content.Equals("ping", StringComparison.InvariantCultureIgnoreCase))
+                if (e.Message.IsCommand("ping"))
+                {
                     await e.Message.RespondAsync("PONG!");
+                }
+                else if (e.Message.IsMentioned("jd"))
+                {
+                    await e.Message.RespondAsync("ORKA <a:cursed:801198310055477298>");
+                }
+                else if(e.Message.IsCommand("halo"))
+                {
+                    var serverId = e.Message.Channel.GuildId;
+                    var server = await _mongo.GetServersCollection().Find(x => x.ServerId == serverId).FirstOrDefaultAsync();
+                    if (server == null)
+                    {
+                        await e.Message.RespondAsync("<:madge:797551865675644949>");
+                        return;
+                    }
 
-                if (e.Message.Content.Equals("jd", StringComparison.InvariantCultureIgnoreCase))
-                    await e.Message.RespondAsync("ORKA :smOrc:");
+                    var usersInChannels = new Dictionary<string, IEnumerable<string>>();
+                    var voiceChannels = server.Channels.Where(x => x.IsVoice);
+                    foreach (var channel in voiceChannels)
+                    {
+                        var currentChannel = await _discordClient.GetChannelAsync(channel.ChannelId);
+                        var users = currentChannel.Users;
+                        if (users.Count > 0)
+                            usersInChannels.Add(channel.Name, users.Select(x => x.DisplayName));
+                    }
+
+                    if(usersInChannels.Count > 0)
+                    {
+                        string msg = "NIECH TO PIERON STRZELI! KTOŚ JEST NA DISCORDZIE NIEMOŻLIWE <:peepoG:757657584508469329>:";
+                        foreach (var uic in usersInChannels)
+                            msg += $"\n - {uic.Key}: {string.Join(", ", uic.Value)}";
+                        await e.Message.RespondAsync(msg);
+                    }
+                    else
+                    {
+                        await e.Message.RespondAsync("Nie ma nikogo na discordzie, chyba każdy znalazł sobie lepszych kolegów <:sadge:753604078499790849>");
+                    }
+                }
             };
 
             _discordClient.ChannelUpdated += async (s, e) =>

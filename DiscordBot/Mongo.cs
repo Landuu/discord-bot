@@ -1,4 +1,5 @@
-﻿using DiscordBot.Options;
+﻿using DiscordBot.Models;
+using DiscordBot.Options;
 using Microsoft.Extensions.Options;
 using MongoDB.Driver;
 using System;
@@ -27,6 +28,11 @@ namespace DiscordBot
         public IMongoDatabase GetDb()
         {
             return Client.GetDatabase(_options.DatabaseName);
+        }
+
+        public IMongoCollection<DbServer> GetServersCollection()
+        {
+            return GetDb().GetCollection<DbServer>("servers");
         }
     }
 }
