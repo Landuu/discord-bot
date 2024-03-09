@@ -13,8 +13,10 @@ var app = Host.CreateDefaultBuilder()
         // DI container
         services
             .AddHostedService<BotService>()
-            .AddSingleton<MemoryStore>()
-            .AddSingleton<Mongo>();
+            .AddSingleton<Mongo>()
+            .AddSingleton<BotHandlers>()
+            .AddSingleton<MemoryStore>();
+
 
 
         // Options

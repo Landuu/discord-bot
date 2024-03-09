@@ -30,9 +30,22 @@ namespace DiscordBot
             return Client.GetDatabase(_options.DatabaseName);
         }
 
-        public IMongoCollection<DbServer> GetServersCollection()
+        public IMongoCollection<T> GetCollection<T>()
         {
-            return GetDb().GetCollection<DbServer>("servers");
+            string collectionName;
+            if (typeof(T) == typeof(DbServer))
+                collectionName = "servers";
+            else
+                throw new ArgumentException("TYPE");
+
+            return GetDb().GetCollection<T>(collectionName);
+        }
+
+        public async Task<DbServer?> GetDbServer(ulong? id)
+        {
+            return await GetCollection<DbServer>()
+                .Find(x => x.ServerId == id)
+                .FirstOrDefaultAsync();
         }
     }
 }
