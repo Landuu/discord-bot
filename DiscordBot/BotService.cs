@@ -1,7 +1,9 @@
-﻿using DiscordBot.ExtensionMethods;
+﻿using DiscordBot.Commands;
+using DiscordBot.ExtensionMethods;
 using DiscordBot.Models;
 using DiscordBot.Options;
 using DSharpPlus;
+using DSharpPlus.CommandsNext;
 using DSharpPlus.Entities;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
@@ -24,7 +26,7 @@ namespace DiscordBot
         private readonly DiscordClient _discordClient;
         private bool _start = true;
 
-        public BotService(ILogger<BotService> logger, IHostApplicationLifetime applicationLifetime, IOptions<DiscordOptions> discordOptions, BotHandlers botHandlers)
+        public BotService(ILogger<BotService> logger, IHostApplicationLifetime applicationLifetime, IOptions<DiscordOptions> discordOptions, BotHandlers botHandlers, IServiceProvider serviceProvider)
         {
             var _discordOptions = discordOptions.Value;
             _logger = logger;
@@ -38,6 +40,14 @@ namespace DiscordBot
                 TokenType = TokenType.Bot,
                 Intents = DiscordIntents.AllUnprivileged | DiscordIntents.MessageContents
             });
+
+            var commands = _discordClient.UseCommandsNext(new CommandsNextConfiguration()
+            {
+                StringPrefixes = _discordOptions.CommandPrefix,
+                Services = serviceProvider
+            });
+
+            commands.RegisterCommands<CurrencyCommands>();
         }
 
         public async Task StartAsync(CancellationToken token)
@@ -47,7 +57,7 @@ namespace DiscordBot
 
             _discordClient.GuildDownloadCompleted += _botHandlers.GuildDownloadComplete;
 
-            _discordClient.MessageCreated += _botHandlers.MessageCreated;
+            // _discordClient.MessageCreated += _botHandlers.MessageCreated;
 
             // Other startup things here
         }

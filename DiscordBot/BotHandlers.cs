@@ -1,7 +1,9 @@
 ﻿using DiscordBot.ExtensionMethods;
 using DiscordBot.Models;
+using DiscordBot.Options;
 using DSharpPlus;
 using DSharpPlus.EventArgs;
+using Microsoft.Extensions.Options;
 using MongoDB.Driver;
 using Newtonsoft.Json.Linq;
 using System;
@@ -15,90 +17,75 @@ namespace DiscordBot
     internal class BotHandlers
     {
         private readonly Mongo _mongo;
+        private readonly DiscordOptions _discordOptions;
 
-        public BotHandlers(Mongo mongo)
+        public BotHandlers(Mongo mongo, IOptions<DiscordOptions> discordOptions)
         {
             _mongo = mongo;
+            _discordOptions = discordOptions.Value;
         }
 
 
         public async Task GuildDownloadComplete(DiscordClient discordClient, GuildDownloadCompletedEventArgs e)
         {
-            await _mongo.GetCollection<DbServer>().DeleteManyAsync(Builders<DbServer>.Filter.Empty);
-            var servers = new List<DbServer>();
+            var serversCollection = _mongo.GetCollection<DbServer>();
+            var currentServers = await serversCollection.Find(x => true).ToListAsync();
 
-            var guilds = e.Guilds.Values;
-            foreach (var guild in guilds)
+            foreach (var guild in e.Guilds.Values)
             {
-                var server = new DbServer()
-                {
-                    ServerId = guild.Id,
-                    Name = guild.Name,
-                };
-
-                var channels = guild.Channels.Values;
-                foreach (var channel in channels)
-                {
-                    if (channel.IsCategory || channel.IsThread) continue;
-                    if (channel.Type != ChannelType.Text && channel.Type != ChannelType.Voice) continue;
-
-                    server.Channels.Add(new()
+                var guildChannels = guild.Channels.Values
+                    .Where(x => !x.IsCategory)
+                    .Where(x => !x.IsThread)
+                    .Where(x => x.Type == ChannelType.Text || x.Type == ChannelType.Voice)
+                    .Select(gc => new DbChannel()
                     {
-                        ChannelId = channel.Id,
-                        Name = channel.Name,
-                        IsVoice = channel.Type == ChannelType.Voice
-                    });
+                        ChannelId = gc.Id,
+                        Name = gc.Name,
+                        IsVoice = gc.Type == ChannelType.Voice
+                    })
+                    .ToList();
+
+                var server = currentServers.FirstOrDefault(x => x.ServerId == guild.Id);
+
+                if(server != null)
+                {
+                    var updateFilter = Builders<DbServer>.Filter
+                        .Eq(s => s.ServerId, server.ServerId);
+
+                    var update = Builders<DbServer>.Update
+                        .Set(s => s.Name, guild.Name)
+                        .Set(s => s.Channels, guildChannels);
+
+                    await serversCollection.UpdateOneAsync(updateFilter, update);
                 }
-
-                servers.Add(server);
+                else
+                {
+                    server = new DbServer()
+                    {
+                        ServerId = guild.Id,
+                        Name = guild.Name,
+                        Channels = guildChannels
+                    };
+                    await serversCollection.InsertOneAsync(server);
+                }
             }
-
-            await _mongo.GetCollection<DbServer>().InsertManyAsync(servers);
         }
 
         public async Task MessageCreated(DiscordClient discordClient, MessageCreateEventArgs e)
         {
-            if (e.Message.IsCommand("ping"))
-            {
-                await e.Message.RespondAsync("PONG!");
-            }
-            else if (e.Message.IsMentioned("jd"))
+            bool isCommand = false;
+            foreach (var prefix in _discordOptions.CommandPrefix)
+                if (e.Message.Content.StartsWith(prefix, StringComparison.InvariantCultureIgnoreCase))
+                    isCommand = true;
+
+            if (isCommand)
+                return;
+
+            if (e.Message.IsMentioned("jd"))
             {
                 await e.Message.RespondAsync("ORKA <a:cursed:801198310055477298>");
             }
-            else if (e.Message.IsCommand("halo"))
-            {
-                var serverId = e.Message.Channel.GuildId;
-                var server = await _mongo.GetDbServer(serverId);
-
-                if (server == null)
-                {
-                    await e.Message.RespondAsync("<:madge:797551865675644949>");
-                    return;
-                }
-
-                var usersInChannels = new Dictionary<string, IEnumerable<string>>();
-                var voiceChannels = server.Channels.Where(x => x.IsVoice);
-                foreach (var channel in voiceChannels)
-                {
-                    var currentChannel = await discordClient.GetChannelAsync(channel.ChannelId);
-                    var users = currentChannel.Users;
-                    if (users.Count > 0)
-                        usersInChannels.Add(channel.Name, users.Select(x => x.DisplayName));
-                }
-
-                if (usersInChannels.Count > 0)
-                {
-                    string msg = "NIECH TO PIERON STRZELI! KTOŚ JEST NA DISCORDZIE NIEMOŻLIWE <:peepoG:757657584508469329>:";
-                    foreach (var uic in usersInChannels)
-                        msg += $"\n - {uic.Key}: {string.Join(", ", uic.Value)}";
-                    await e.Message.RespondAsync(msg);
-                }
-                else
-                {
-                    await e.Message.RespondAsync("Nie ma nikogo na discordzie, chyba każdy znalazł sobie lepszych kolegów <:sadge:753604078499790849>");
-                }
-            }
+            
         }
     }
 }

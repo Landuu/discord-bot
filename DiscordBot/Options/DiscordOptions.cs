@@ -9,5 +9,7 @@ namespace DiscordBot.Options
     internal class DiscordOptions
     {
         public required string Token { get; set; }
+
+        public required string[] CommandPrefix { get; set; }
     }
 }

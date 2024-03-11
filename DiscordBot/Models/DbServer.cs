@@ -15,6 +15,8 @@ namespace DiscordBot.Models
 
         public required string Name { get; set; }
 
+        public IList<ulong> RegisteredUsers { get; set; } = [];
+
         public IList<DbChannel> Channels { get; set; } = [];
     }
 }

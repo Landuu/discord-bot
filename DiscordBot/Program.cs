@@ -20,8 +20,6 @@ var app = Host.CreateDefaultBuilder()
 
 
         // Options
-        services.AddOptions<BaseOptions>()
-            .Bind(hostContext.Configuration.GetSection(nameof(BaseOptions)));
         services.AddOptions<DiscordOptions>()
             .Bind(hostContext.Configuration.GetSection(nameof(DiscordOptions)));
         services.AddOptions<MongoOptions>()
